@@ -1,4 +1,4 @@
-.PHONY: up down logs build test tidy migrate
+.PHONY: up down logs build test tidy migrate seed
 
 up:
 	docker compose up -d --build
@@ -20,3 +20,6 @@ tidy:
 
 migrate:
 	go run ./cmd/migrate
+
+seed:
+	go run ./cmd/seed
