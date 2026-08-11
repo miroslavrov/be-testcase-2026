@@ -20,5 +20,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
+
+	mux.HandleFunc("POST /v1/auth/token", s.handleAuthToken)
+	mux.HandleFunc("POST /v1/auth/refresh", s.handleAuthRefresh)
+
 	return mux
 }
