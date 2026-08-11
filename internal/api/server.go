@@ -33,6 +33,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/tasks", s.requireAuth(s.handleCreateTask))
 	mux.HandleFunc("GET /v1/tasks", s.requireAuth(s.handleListTasks))
 	mux.HandleFunc("GET /v1/tasks/{id}", s.requireAuth(s.handleGetTask))
+	mux.HandleFunc("POST /v1/tasks/{id}/cancel", s.requireAuth(s.handleCancelTask))
 
 	return mux
 }

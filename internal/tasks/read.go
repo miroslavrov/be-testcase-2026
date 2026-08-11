@@ -10,7 +10,10 @@ import (
 	"github.com/miroslavrov/be-testcase-2026/internal/domain"
 )
 
-var ErrNotFound = errors.New("task not found")
+var (
+	ErrNotFound       = errors.New("task not found")
+	ErrNotCancellable = errors.New("task cannot be cancelled")
+)
 
 type ListFilter struct {
 	Status string
