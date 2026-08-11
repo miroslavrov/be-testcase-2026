@@ -17,7 +17,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := s.tasks.Create(r.Context(), id.OrgID, id.UserID, in)
+	task, err := s.tasks.Create(r.Context(), id.OrgID, id.UserID, r.Header.Get("Idempotency-Key"), in)
 	if err != nil {
 		writeTaskError(w, err)
 		return
@@ -35,6 +35,8 @@ func writeTaskError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusPaymentRequired, "no_subscription", "organization has no active subscription")
 	case errors.Is(err, tasks.ErrBudgetExceeded):
 		writeError(w, http.StatusPaymentRequired, "budget_exceeded", "monthly budget would be exceeded")
+	case errors.Is(err, tasks.ErrIdempotencyMismatch):
+		writeError(w, http.StatusUnprocessableEntity, "idempotency_mismatch", err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal", "something went wrong")
 	}

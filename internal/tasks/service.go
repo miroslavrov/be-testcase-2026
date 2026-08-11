@@ -2,6 +2,8 @@ package tasks
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,10 +17,11 @@ import (
 )
 
 var (
-	ErrValidation     = errors.New("validation")
-	ErrUnknownTool    = errors.New("unknown tool")
-	ErrNoSubscription = errors.New("no active subscription")
-	ErrBudgetExceeded = errors.New("budget exceeded")
+	ErrValidation          = errors.New("validation")
+	ErrUnknownTool         = errors.New("unknown tool")
+	ErrNoSubscription      = errors.New("no active subscription")
+	ErrBudgetExceeded      = errors.New("budget exceeded")
+	ErrIdempotencyMismatch = errors.New("idempotency key reused with different body")
 )
 
 type Service struct {
@@ -52,7 +55,7 @@ type Task struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
-func (s *Service) Create(ctx context.Context, orgID, userID string, in CreateInput) (Task, error) {
+func (s *Service) Create(ctx context.Context, orgID, userID, idemKey string, in CreateInput) (Task, error) {
 	if err := in.validate(); err != nil {
 		return Task{}, err
 	}
@@ -62,6 +65,22 @@ func (s *Service) Create(ctx context.Context, orgID, userID string, in CreateInp
 		return Task{}, err
 	}
 	defer tx.Rollback(ctx)
+
+	reqHash := hashInput(in)
+	if idemKey != "" {
+		// сериализуем запросы с одним ключом: остальные ждут коммита первого прямо на этом локе
+		if _, err := tx.Exec(ctx,
+			`select pg_advisory_xact_lock(hashtext($1), hashtext($2))`, orgID, idemKey); err != nil {
+			return Task{}, err
+		}
+		cached, hit, err := lookupIdempotent(ctx, tx, orgID, idemKey, reqHash)
+		if err != nil {
+			return Task{}, err
+		}
+		if hit {
+			return cached, nil
+		}
+	}
 
 	// лочим строку подписки: два инстанса api не смогут одновременно посчитать бюджет
 	// и оба проскочить лимит — второй ждёт коммита первого и видит уже учтённую задачу
@@ -120,10 +139,50 @@ func (s *Service) Create(ctx context.Context, orgID, userID string, in CreateInp
 		return Task{}, err
 	}
 
+	if idemKey != "" {
+		body, _ := json.Marshal(task)
+		if _, err := tx.Exec(ctx, `
+			insert into idempotency_keys (org_id, key, request_hash, response_status, response_body)
+			values ($1, $2, $3, $4, $5)`,
+			orgID, idemKey, reqHash, 201, body); err != nil {
+			return Task{}, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return Task{}, err
 	}
 	return task, nil
+}
+
+func hashInput(in CreateInput) string {
+	b, _ := json.Marshal(in)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func lookupIdempotent(ctx context.Context, tx pgx.Tx, orgID, key, reqHash string) (Task, bool, error) {
+	var (
+		storedHash string
+		body       []byte
+	)
+	err := tx.QueryRow(ctx,
+		`select request_hash, response_body from idempotency_keys where org_id = $1 and key = $2`,
+		orgID, key).Scan(&storedHash, &body)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Task{}, false, nil
+	}
+	if err != nil {
+		return Task{}, false, err
+	}
+	if storedHash != reqHash {
+		return Task{}, false, ErrIdempotencyMismatch
+	}
+	var t Task
+	if err := json.Unmarshal(body, &t); err != nil {
+		return Task{}, false, err
+	}
+	return t, true, nil
 }
 
 func (in CreateInput) validate() error {
