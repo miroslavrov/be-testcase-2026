@@ -1,4 +1,4 @@
-.PHONY: up down logs build test tidy migrate seed
+.PHONY: up down logs build test test-race tidy migrate seed
 
 up:
 	docker compose up -d --build
@@ -13,7 +13,10 @@ build:
 	go build ./...
 
 test:
-	go test ./... -race -count=1
+	go test ./... -count=1
+
+test-race:
+	CGO_ENABLED=1 go test ./... -race -count=1
 
 tidy:
 	go mod tidy
