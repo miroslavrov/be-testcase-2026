@@ -10,26 +10,29 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/miroslavrov/be-testcase-2026/internal/api"
 	"github.com/miroslavrov/be-testcase-2026/internal/config"
+	"github.com/miroslavrov/be-testcase-2026/internal/store"
 )
 
 func main() {
 	cfg := config.Load()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := store.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("db connect failed", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           api.New(cfg, pool).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		slog.Info("api listening", "addr", cfg.HTTPAddr)
