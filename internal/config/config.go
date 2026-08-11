@@ -5,12 +5,14 @@ import "os"
 type Config struct {
 	HTTPAddr    string
 	DatabaseURL string
+	JWTSecret   string
 }
 
 func Load() Config {
 	return Config{
 		HTTPAddr:    getenv("HTTP_ADDR", ":8080"),
 		DatabaseURL: getenv("DATABASE_URL", "postgres://agenthub:agenthub@localhost:5432/agenthub?sslmode=disable"),
+		JWTSecret:   getenv("JWT_SECRET", "dev-secret-change-me"),
 	}
 }
 
