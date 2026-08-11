@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/miroslavrov/be-testcase-2026/internal/tasks"
 )
@@ -25,8 +26,40 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, task)
 }
 
+func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
+	id := identityFrom(r.Context())
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	filter := tasks.ListFilter{
+		Status: r.URL.Query().Get("status"),
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	items, err := s.tasks.List(r.Context(), id.OrgID, filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "something went wrong")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": items})
+}
+
+func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
+	id := identityFrom(r.Context())
+
+	detail, err := s.tasks.Get(r.Context(), id.OrgID, r.PathValue("id"))
+	if err != nil {
+		writeTaskError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
 func writeTaskError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, tasks.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "task not found")
 	case errors.Is(err, tasks.ErrValidation):
 		writeError(w, http.StatusUnprocessableEntity, "validation", err.Error())
 	case errors.Is(err, tasks.ErrUnknownTool):

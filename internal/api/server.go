@@ -31,6 +31,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/auth/refresh", s.handleAuthRefresh)
 
 	mux.HandleFunc("POST /v1/tasks", s.requireAuth(s.handleCreateTask))
+	mux.HandleFunc("GET /v1/tasks", s.requireAuth(s.handleListTasks))
+	mux.HandleFunc("GET /v1/tasks/{id}", s.requireAuth(s.handleGetTask))
 
 	return mux
 }
