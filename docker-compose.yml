@@ -15,6 +15,16 @@ services:
       timeout: 2s
       retries: 15
 
+  migrate:
+    build: .
+    command: migrate
+    environment:
+      DATABASE_URL: postgres://agenthub:agenthub@postgres:5432/agenthub?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build: .
     command: api
@@ -26,6 +36,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build: .
@@ -35,6 +47,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

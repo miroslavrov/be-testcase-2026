@@ -1,4 +1,4 @@
-.PHONY: up down logs build test tidy
+.PHONY: up down logs build test tidy migrate
 
 up:
 	docker compose up -d --build
@@ -17,3 +17,6 @@ test:
 
 tidy:
 	go mod tidy
+
+migrate:
+	go run ./cmd/migrate
