@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agenthub
+      POSTGRES_PASSWORD: agenthub
+      POSTGRES_DB: agenthub
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenthub"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  api:
+    build: .
+    command: api
+    environment:
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://agenthub:agenthub@postgres:5432/agenthub?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: worker
+    environment:
+      DATABASE_URL: postgres://agenthub:agenthub@postgres:5432/agenthub?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
