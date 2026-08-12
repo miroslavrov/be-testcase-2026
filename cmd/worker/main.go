@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/miroslavrov/be-testcase-2026/internal/approvals"
 	"github.com/miroslavrov/be-testcase-2026/internal/config"
 	"github.com/miroslavrov/be-testcase-2026/internal/store"
 	"github.com/miroslavrov/be-testcase-2026/internal/worker"
@@ -40,7 +41,33 @@ func main() {
 		}(i)
 	}
 
+	// отдельная горутина досматривает просроченные согласования
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runSweeper(ctx, approvals.NewService(pool), 5*time.Second)
+	}()
+
 	<-ctx.Done()
 	wg.Wait()
 	slog.Info("worker stopped")
+}
+
+func runSweeper(ctx context.Context, svc *approvals.Service, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := svc.SweepExpired(ctx)
+			if err != nil && ctx.Err() == nil {
+				slog.Error("approval sweep failed", "err", err)
+			}
+			if n > 0 {
+				slog.Info("approval sweep", "processed", n)
+			}
+		}
+	}
 }
