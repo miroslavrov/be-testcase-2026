@@ -46,6 +46,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/approvals/{id}/approve", s.requireAuth(s.handleApproveApproval, "owner", "admin", "approver"))
 	mux.HandleFunc("POST /v1/approvals/{id}/reject", s.requireAuth(s.handleRejectApproval, "owner", "admin", "approver"))
 
+	mux.HandleFunc("GET /v1/subscription", s.requireAuth(s.handleGetSubscription))
+	mux.HandleFunc("GET /v1/invoices", s.requireAuth(s.handleListInvoices))
+	mux.HandleFunc("GET /v1/invoices/{id}", s.requireAuth(s.handleGetInvoice))
 	mux.HandleFunc("POST /v1/invoices/generate", s.requireAuth(s.handleGenerateInvoice, "owner", "admin"))
 
 	return mux

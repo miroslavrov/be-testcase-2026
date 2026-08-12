@@ -2,9 +2,50 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
+
+	"github.com/miroslavrov/be-testcase-2026/internal/billing"
 )
+
+func (s *Server) handleGetSubscription(w http.ResponseWriter, r *http.Request) {
+	id := identityFrom(r.Context())
+	sub, err := s.billing.Subscription(r.Context(), id.OrgID)
+	if errors.Is(err, billing.ErrNoSubscription) {
+		writeError(w, http.StatusNotFound, "no_subscription", "organization has no active subscription")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "something went wrong")
+		return
+	}
+	writeJSON(w, http.StatusOK, sub)
+}
+
+func (s *Server) handleListInvoices(w http.ResponseWriter, r *http.Request) {
+	id := identityFrom(r.Context())
+	items, err := s.billing.ListInvoices(r.Context(), id.OrgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "something went wrong")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"invoices": items})
+}
+
+func (s *Server) handleGetInvoice(w http.ResponseWriter, r *http.Request) {
+	id := identityFrom(r.Context())
+	inv, err := s.billing.GetInvoice(r.Context(), id.OrgID, r.PathValue("id"))
+	if errors.Is(err, billing.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "invoice not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "something went wrong")
+		return
+	}
+	writeJSON(w, http.StatusOK, inv)
+}
 
 func (s *Server) handleGenerateInvoice(w http.ResponseWriter, r *http.Request) {
 	id := identityFrom(r.Context())
