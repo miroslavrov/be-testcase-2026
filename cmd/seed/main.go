@@ -26,7 +26,7 @@ func main() {
 	cfg := config.Load()
 	ctx := context.Background()
 
-	pool, err := store.Connect(ctx, cfg.DatabaseURL)
+	pool, err := store.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		slog.Error("db connect failed", "err", err)
 		os.Exit(1)

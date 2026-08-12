@@ -46,6 +46,11 @@ services:
     environment:
       DATABASE_URL: postgres://agenthub:agenthub@postgres:5432/agenthub?sslmode=disable
       WORKER_CONCURRENCY: 2
+    healthcheck:
+      test: ["CMD", "pgrep", "worker"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy

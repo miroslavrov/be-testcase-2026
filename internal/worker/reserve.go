@@ -46,7 +46,7 @@ func ReserveSlot(ctx context.Context, tx pgx.Tx, orgID, slotType string) (string
 	err = tx.QueryRow(ctx, `
 		select id from agent_slots
 		where org_id = $1 and slot_type = $2 and status = 'available'
-		order by id
+		order by created_at
 		for update skip locked
 		limit 1`, orgID, slotType).Scan(&slotID)
 	if errors.Is(err, pgx.ErrNoRows) {

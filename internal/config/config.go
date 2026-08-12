@@ -10,6 +10,7 @@ type Config struct {
 	DatabaseURL       string
 	JWTSecret         string
 	WorkerConcurrency int
+	DBMaxConns        int
 }
 
 func Load() Config {
@@ -18,6 +19,7 @@ func Load() Config {
 		DatabaseURL:       getenv("DATABASE_URL", "postgres://agenthub:agenthub@localhost:5432/agenthub?sslmode=disable"),
 		JWTSecret:         getenv("JWT_SECRET", "dev-secret-change-me"),
 		WorkerConcurrency: getenvInt("WORKER_CONCURRENCY", 2),
+		DBMaxConns:        getenvInt("DB_MAX_CONNS", 16),
 	}
 }
 
