@@ -255,4 +255,3 @@ func budgetUsage(ctx context.Context, tx pgx.Tx, orgID string, start, end time.T
 	}
 	return used, committed, nil
 }
-
