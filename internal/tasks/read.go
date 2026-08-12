@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -31,10 +32,18 @@ type ToolCallView struct {
 	Result           json.RawMessage `json:"result,omitempty"`
 }
 
+type ApprovalInfo struct {
+	ID               string    `json:"id"`
+	Status           string    `json:"status"`
+	CurrentStepOrder int       `json:"current_step_order"`
+	Deadline         time.Time `json:"current_step_deadline"`
+}
+
 type TaskDetail struct {
 	Task
 	ToolCalls       []ToolCallView `json:"tool_calls"`
 	CurrentToolCall *ToolCallView  `json:"current_tool_call"`
+	Approval        *ApprovalInfo  `json:"approval"`
 }
 
 func (s *Service) List(ctx context.Context, orgID string, f ListFilter) ([]Task, error) {
@@ -103,6 +112,20 @@ func (s *Service) Get(ctx context.Context, orgID, taskID string) (TaskDetail, er
 	}
 
 	d.CurrentToolCall = currentCall(d.ToolCalls)
+
+	// если текущий вызов ждёт согласования — подтягиваем его статус
+	if d.CurrentToolCall != nil && d.CurrentToolCall.Status == domain.CallAwaitingApproval {
+		var a ApprovalInfo
+		err := s.pool.QueryRow(ctx, `
+			select id, status, current_step_order, current_step_deadline
+			from approval_requests where tool_call_id = $1`,
+			d.CurrentToolCall.ID).Scan(&a.ID, &a.Status, &a.CurrentStepOrder, &a.Deadline)
+		if err == nil {
+			d.Approval = &a
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return TaskDetail{}, err
+		}
+	}
 	return d, nil
 }
 
