@@ -45,6 +45,7 @@ services:
     command: worker
     environment:
       DATABASE_URL: postgres://agenthub:agenthub@postgres:5432/agenthub?sslmode=disable
+      WORKER_CONCURRENCY: 2
     depends_on:
       postgres:
         condition: service_healthy
