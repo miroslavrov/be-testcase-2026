@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/miroslavrov/be-testcase-2026/internal/audit"
 	"github.com/miroslavrov/be-testcase-2026/internal/domain"
 )
 
@@ -41,7 +42,7 @@ func (s *Service) Cancel(ctx context.Context, orgID, userID, taskID string) erro
 		taskID, domain.TaskCancelled); err != nil {
 		return err
 	}
-	if err := recordTransition(ctx, tx, orgID, "task", taskID, status, domain.TaskCancelled, "user", userID); err != nil {
+	if err := audit.Transition(ctx, tx, orgID, "task", taskID, status, domain.TaskCancelled, "user", userID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -73,7 +74,7 @@ func releaseExecution(ctx context.Context, tx pgx.Tx, orgID, taskID, userID stri
 		slotID); err != nil {
 		return err
 	}
-	return recordTransition(ctx, tx, orgID, "execution", execID, domain.TaskRunning, domain.TaskCancelled, "user", userID)
+	return audit.Transition(ctx, tx, orgID, "execution", execID, domain.TaskRunning, domain.TaskCancelled, "user", userID)
 }
 
 func isTerminal(status string) bool {

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/miroslavrov/be-testcase-2026/internal/audit"
 	"github.com/miroslavrov/be-testcase-2026/internal/domain"
 )
 
@@ -135,7 +136,7 @@ func (s *Service) Create(ctx context.Context, orgID, userID, idemKey string, in 
 		}
 	}
 
-	if err := recordTransition(ctx, tx, orgID, "task", task.ID, "", domain.TaskQueued, "user", userID); err != nil {
+	if err := audit.Transition(ctx, tx, orgID, "task", task.ID, "", domain.TaskQueued, "user", userID); err != nil {
 		return Task{}, err
 	}
 
@@ -255,18 +256,3 @@ func budgetUsage(ctx context.Context, tx pgx.Tx, orgID string, start, end time.T
 	return used, committed, nil
 }
 
-func recordTransition(ctx context.Context, tx pgx.Tx, orgID, entityType, entityID, from, to, actorType, actorID string) error {
-	var actor *string
-	if actorID != "" {
-		actor = &actorID
-	}
-	var fromVal *string
-	if from != "" {
-		fromVal = &from
-	}
-	_, err := tx.Exec(ctx, `
-		insert into state_transitions (org_id, entity_type, entity_id, from_status, to_status, actor_type, actor_id)
-		values ($1, $2, $3, $4, $5, $6, $7)`,
-		orgID, entityType, entityID, fromVal, to, actorType, actor)
-	return err
-}
