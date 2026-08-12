@@ -40,6 +40,8 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("GET /v1/approvals", s.requireAuth(s.handleListApprovals, "owner", "admin", "approver"))
 	mux.HandleFunc("GET /v1/approvals/{id}", s.requireAuth(s.handleGetApproval, "owner", "admin", "approver"))
+	mux.HandleFunc("POST /v1/approvals/{id}/approve", s.requireAuth(s.handleApproveApproval, "owner", "admin", "approver"))
+	mux.HandleFunc("POST /v1/approvals/{id}/reject", s.requireAuth(s.handleRejectApproval, "owner", "admin", "approver"))
 
 	return mux
 }
