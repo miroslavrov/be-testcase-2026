@@ -21,6 +21,7 @@ const (
 	stepDone
 	stepSkip
 	stepAbandoned
+	stepPaused
 )
 
 type currentCall struct {
@@ -46,6 +47,9 @@ func (w *Worker) runExecution(ctx context.Context, c *claimed) {
 			continue
 		case stepAbandoned:
 			// задачу отменили пока мы работали, слот освободили без нас
+			return
+		case stepPaused:
+			// встали на согласование, слот держим, ждём решения approver'а
 			return
 		}
 
@@ -101,13 +105,14 @@ func (w *Worker) nextCall(ctx context.Context, c *claimed) (currentCall, stepSta
 	var (
 		call       currentCall
 		callStatus string
+		riskLevel  string
 	)
 	err = tx.QueryRow(ctx, `
-		select c.id, c.status, c.estimated_cost_usd, t.name, t.mock_min_ms, t.mock_max_ms, t.mock_failure_rate
+		select c.id, c.status, c.estimated_cost_usd, t.name, t.risk_level, t.mock_min_ms, t.mock_max_ms, t.mock_failure_rate
 		from tool_calls c
 		join tool_definitions t on t.id = c.tool_id
 		where c.task_id = $1 and c.order_index = $2`,
-		c.TaskID, idx).Scan(&call.ID, &callStatus, &call.Estimated, &call.ToolName,
+		c.TaskID, idx).Scan(&call.ID, &callStatus, &call.Estimated, &call.ToolName, &riskLevel,
 		&call.Mock.MinMs, &call.Mock.MaxMs, &call.Mock.FailureRate)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// вызовы кончились — задача готова
@@ -127,7 +132,38 @@ func (w *Worker) nextCall(ctx context.Context, c *claimed) (currentCall, stepSta
 		return currentCall{}, stepSkip, tx.Commit(ctx)
 	}
 
-	// TODO: тут встанет проверка согласования, пока всё идёт как auto_approved
+	switch callStatus {
+	case domain.CallAwaitingApproval:
+		approved, resolved, err := approvalResolved(ctx, tx, call.ID)
+		if err != nil {
+			return currentCall{}, stepRun, err
+		}
+		if !resolved {
+			return currentCall{}, stepPaused, tx.Commit(ctx)
+		}
+		if !approved {
+			return currentCall{}, stepAbandoned, tx.Commit(ctx)
+		}
+		// согласовано — падаем ниже и исполняем
+	case domain.CallPending:
+		var threshold float64
+		if err := tx.QueryRow(ctx, `
+			select p.auto_approve_threshold_usd
+			from subscriptions s join plans p on p.id = s.plan_id
+			where s.org_id = $1 and s.status = 'active'`, c.OrgID).Scan(&threshold); err != nil {
+			return currentCall{}, stepRun, err
+		}
+		if needsApproval(riskLevel, call.Estimated, threshold) {
+			raised, err := raiseApproval(ctx, tx, c, call.ID, riskLevel, callStatus)
+			if err != nil {
+				return currentCall{}, stepRun, err
+			}
+			if raised {
+				return currentCall{}, stepPaused, tx.Commit(ctx)
+			}
+			// цепочки нет — исполняем без согласования
+		}
+	}
 
 	if _, err := tx.Exec(ctx,
 		`update tool_calls set status = 'executing', started_at = coalesce(started_at, now()) where id = $1`,

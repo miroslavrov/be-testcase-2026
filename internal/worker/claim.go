@@ -17,6 +17,41 @@ type claimed struct {
 	SlotID      string
 }
 
+// claimResumable берёт исполнение, которое числится running, но лиз протух.
+// сюда попадают и упавшие воркеры (crash recovery), и возобновлённые после approve
+func (w *Worker) claimResumable(ctx context.Context) (*claimed, error) {
+	tx, err := w.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var c claimed
+	err = tx.QueryRow(ctx, `
+		select id, task_id, org_id, slot_id
+		from task_executions
+		where status = 'running' and lease_expires_at < now()
+		order by lease_expires_at
+		for update skip locked
+		limit 1`).Scan(&c.ExecutionID, &c.TaskID, &c.OrgID, &c.SlotID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`update task_executions set lease_expires_at = now() + interval '2 minutes', updated_at = now() where id = $1`,
+		c.ExecutionID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 // claimQueued берёт одну задачу из очереди и садит её на слот.
 // nil без ошибки — брать нечего
 func (w *Worker) claimQueued(ctx context.Context) (*claimed, error) {

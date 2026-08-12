@@ -24,7 +24,11 @@ func (w *Worker) Run(ctx context.Context, poll time.Duration) {
 			return
 		}
 
-		c, err := w.claimQueued(ctx)
+		// сначала подбираем брошенные/возобновлённые исполнения, потом берём новое из очереди
+		c, err := w.claimResumable(ctx)
+		if err == nil && c == nil {
+			c, err = w.claimQueued(ctx)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return
