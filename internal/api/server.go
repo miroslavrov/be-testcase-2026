@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/miroslavrov/be-testcase-2026/internal/approvals"
+	"github.com/miroslavrov/be-testcase-2026/internal/billing"
 	"github.com/miroslavrov/be-testcase-2026/internal/config"
 	"github.com/miroslavrov/be-testcase-2026/internal/tasks"
 )
@@ -15,6 +16,7 @@ type Server struct {
 	pool      *pgxpool.Pool
 	tasks     *tasks.Service
 	approvals *approvals.Service
+	billing   *billing.Service
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
@@ -23,6 +25,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 		pool:      pool,
 		tasks:     tasks.NewService(pool),
 		approvals: approvals.NewService(pool),
+		billing:   billing.NewService(pool),
 	}
 }
 
@@ -42,6 +45,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/approvals/{id}", s.requireAuth(s.handleGetApproval, "owner", "admin", "approver"))
 	mux.HandleFunc("POST /v1/approvals/{id}/approve", s.requireAuth(s.handleApproveApproval, "owner", "admin", "approver"))
 	mux.HandleFunc("POST /v1/approvals/{id}/reject", s.requireAuth(s.handleRejectApproval, "owner", "admin", "approver"))
+
+	mux.HandleFunc("POST /v1/invoices/generate", s.requireAuth(s.handleGenerateInvoice, "owner", "admin"))
 
 	return mux
 }
