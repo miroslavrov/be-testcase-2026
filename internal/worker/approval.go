@@ -25,14 +25,15 @@ func raiseApproval(ctx context.Context, tx pgx.Tx, c *claimed, callID, riskLevel
 		chainID   string
 		stepOrder int
 		timeoutH  float64
+		stepRole  string
 	)
 	err := tx.QueryRow(ctx, `
-		select ch.id, st.step_order, st.timeout_hours
+		select ch.id, st.step_order, st.timeout_hours, st.approver_role
 		from approval_chains ch
 		join approval_chain_steps st on st.chain_id = ch.id
 		where ch.org_id = $1 and ch.risk_level = $2
 		order by st.step_order
-		limit 1`, c.OrgID, riskLevel).Scan(&chainID, &stepOrder, &timeoutH)
+		limit 1`, c.OrgID, riskLevel).Scan(&chainID, &stepOrder, &timeoutH, &stepRole)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -66,6 +67,15 @@ func raiseApproval(ctx context.Context, tx pgx.Tx, c *claimed, callID, riskLevel
 		return false, err
 	}
 	if err := audit.Transition(ctx, tx, c.OrgID, "execution", c.ExecutionID, domain.TaskRunning, domain.TaskAwaitingApproval, "worker", ""); err != nil {
+		return false, err
+	}
+
+	// уведомляем согласующих нужной роли — просто пишем в таблицу, без реальной отправки
+	if _, err := tx.Exec(ctx, `
+		insert into notifications (org_id, user_id, kind, payload)
+		select $1, id, 'approval_requested', jsonb_build_object('tool_call_id', $2::text, 'risk', $3::text)
+		from users where org_id = $1 and role = $4`,
+		c.OrgID, callID, riskLevel, stepRole); err != nil {
 		return false, err
 	}
 	return true, nil
