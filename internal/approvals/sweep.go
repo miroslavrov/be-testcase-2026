@@ -91,7 +91,7 @@ func (s *Service) sweepOne(ctx context.Context) (bool, error) {
 		values ($1, $2, 'timeout_rejected')`, reqID, stepOrder); err != nil {
 		return false, err
 	}
-	if err := rejectFlow(ctx, tx, orgID, reqID, callID, taskID); err != nil {
+	if err := rejectFlow(ctx, tx, orgID, reqID, callID, taskID, "system", ""); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)

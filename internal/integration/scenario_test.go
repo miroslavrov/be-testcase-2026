@@ -81,7 +81,7 @@ func TestScenarioFromSpec(t *testing.T) {
 
 	// шаг 11: журнал отражает полный путь задачи
 	assert.Equal(t,
-		[]string{"queued", "running", "awaiting_approval", "running", "awaiting_approval", "failed"},
+		[]string{"submitted", "queued", "running", "awaiting_approval", "running", "awaiting_approval", "failed"},
 		taskPath(t, pool, task.ID))
 }
 

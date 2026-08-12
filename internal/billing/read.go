@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/miroslavrov/be-testcase-2026/internal/domain"
 )
 
 type SubscriptionView struct {
@@ -46,8 +48,8 @@ func (s *Service) Subscription(ctx context.Context, orgID string) (SubscriptionV
 	}
 	if err := s.pool.QueryRow(ctx, `
 		select coalesce(sum(estimated_cost_usd), 0) from tasks
-		where org_id = $1 and status in ('submitted', 'queued', 'running', 'awaiting_approval')`,
-		orgID).Scan(&v.BudgetReservedUSD); err != nil {
+		where org_id = $1 and status = any($2)`,
+		orgID, domain.ActiveTaskStatuses()).Scan(&v.BudgetReservedUSD); err != nil {
 		return SubscriptionView{}, err
 	}
 	v.BudgetRemainingUSD = v.MonthlyBudgetUSD - v.BudgetUsedUSD - v.BudgetReservedUSD

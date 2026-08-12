@@ -116,12 +116,14 @@ func (s *Service) Create(ctx context.Context, orgID, userID, idemKey string, in 
 			ErrBudgetExceeded, used, committed, estimate, budget)
 	}
 
+	// создаём в submitted и тут же переводим в queued: проверки уже пройдены,
+	// но история должна отражать полный жизненный цикл из тз
 	var task Task
 	err = tx.QueryRow(ctx, `
 		insert into tasks (org_id, created_by, title, required_slot_type, priority, status, estimated_cost_usd)
 		values ($1, $2, $3, $4, $5, $6, $7)
 		returning id, title, status, required_slot_type, priority, estimated_cost_usd, created_at`,
-		orgID, userID, in.Title, in.RequiredSlotType, in.Priority, domain.TaskQueued, estimate,
+		orgID, userID, in.Title, in.RequiredSlotType, in.Priority, domain.TaskSubmitted, estimate,
 	).Scan(&task.ID, &task.Title, &task.Status, &task.RequiredSlotType, &task.Priority, &task.EstimatedCostUSD, &task.CreatedAt)
 	if err != nil {
 		return Task{}, err
@@ -136,9 +138,19 @@ func (s *Service) Create(ctx context.Context, orgID, userID, idemKey string, in 
 		}
 	}
 
-	if err := audit.Transition(ctx, tx, orgID, "task", task.ID, "", domain.TaskQueued, "user", userID); err != nil {
+	if err := audit.Transition(ctx, tx, orgID, "task", task.ID, "", domain.TaskSubmitted, "user", userID); err != nil {
 		return Task{}, err
 	}
+
+	if _, err := tx.Exec(ctx,
+		`update tasks set status = $2, updated_at = now() where id = $1`,
+		task.ID, domain.TaskQueued); err != nil {
+		return Task{}, err
+	}
+	if err := audit.Transition(ctx, tx, orgID, "task", task.ID, domain.TaskSubmitted, domain.TaskQueued, "system", ""); err != nil {
+		return Task{}, err
+	}
+	task.Status = domain.TaskQueued
 
 	if idemKey != "" {
 		body, _ := json.Marshal(task)

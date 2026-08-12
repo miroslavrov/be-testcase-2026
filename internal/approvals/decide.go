@@ -70,7 +70,7 @@ func (s *Service) decide(ctx context.Context, orgID, id, approverID, approverRol
 	}
 
 	if !approve {
-		if err := rejectFlow(ctx, tx, orgID, id, callID, taskID); err != nil {
+		if err := rejectFlow(ctx, tx, orgID, id, callID, taskID, "approver", approverID); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
@@ -101,13 +101,13 @@ func (s *Service) decide(ctx context.Context, orgID, id, approverID, approverRol
 	}
 
 	// последний шаг согласован — возобновляем исполнение
-	if err := resumeFlow(ctx, tx, orgID, id, taskID); err != nil {
+	if err := resumeFlow(ctx, tx, orgID, id, taskID, approverID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-func rejectFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, callID, taskID string) error {
+func rejectFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, callID, taskID, actorType, actorID string) error {
 	if _, err := tx.Exec(ctx,
 		`update approval_requests set status = 'rejected', resolved_at = now() where id = $1`, reqID); err != nil {
 		return err
@@ -116,7 +116,7 @@ func rejectFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, callID, taskID str
 		`update tool_calls set status = 'rejected', finished_at = now() where id = $1`, callID); err != nil {
 		return err
 	}
-	if err := audit.Transition(ctx, tx, orgID, "tool_call", callID, domain.CallAwaitingApproval, domain.CallRejected, "approver", ""); err != nil {
+	if err := audit.Transition(ctx, tx, orgID, "tool_call", callID, domain.CallAwaitingApproval, domain.CallRejected, actorType, actorID); err != nil {
 		return err
 	}
 
@@ -134,7 +134,7 @@ func rejectFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, callID, taskID str
 			`update agent_slots set status = 'available', updated_at = now() where id = $1`, slotID); err != nil {
 			return err
 		}
-		if err := audit.Transition(ctx, tx, orgID, "execution", execID, domain.TaskAwaitingApproval, domain.TaskFailed, "approver", ""); err != nil {
+		if err := audit.Transition(ctx, tx, orgID, "execution", execID, domain.TaskAwaitingApproval, domain.TaskFailed, actorType, actorID); err != nil {
 			return err
 		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -146,10 +146,10 @@ func rejectFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, callID, taskID str
 		where id = $1 and status = 'awaiting_approval'`, taskID); err != nil {
 		return err
 	}
-	return audit.Transition(ctx, tx, orgID, "task", taskID, domain.TaskAwaitingApproval, domain.TaskFailed, "approver", "")
+	return audit.Transition(ctx, tx, orgID, "task", taskID, domain.TaskAwaitingApproval, domain.TaskFailed, actorType, actorID)
 }
 
-func resumeFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, taskID string) error {
+func resumeFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, taskID, approverID string) error {
 	if _, err := tx.Exec(ctx,
 		`update approval_requests set status = 'approved', resolved_at = now() where id = $1`, reqID); err != nil {
 		return err
@@ -174,8 +174,8 @@ func resumeFlow(ctx context.Context, tx pgx.Tx, orgID, reqID, taskID string) err
 		where id = $1 and status = 'awaiting_approval'`, taskID); err != nil {
 		return err
 	}
-	if err := audit.Transition(ctx, tx, orgID, "execution", execID, domain.TaskAwaitingApproval, domain.TaskRunning, "approver", ""); err != nil {
+	if err := audit.Transition(ctx, tx, orgID, "execution", execID, domain.TaskAwaitingApproval, domain.TaskRunning, "approver", approverID); err != nil {
 		return err
 	}
-	return audit.Transition(ctx, tx, orgID, "task", taskID, domain.TaskAwaitingApproval, domain.TaskRunning, "approver", "")
+	return audit.Transition(ctx, tx, orgID, "task", taskID, domain.TaskAwaitingApproval, domain.TaskRunning, "approver", approverID)
 }
